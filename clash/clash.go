@@ -3,6 +3,8 @@ package clash
 import (
 	"context"
 	"encoding/json"
+	"github.com/Dreamacro/clash/adapter"
+	"github.com/Dreamacro/clash/adapter/outboundgroup"
 	"path/filepath"
 	"time"
 
@@ -55,6 +57,30 @@ func SetConfig(uuid string) error {
 	return nil
 }
 
+func PatchSelectGroup(data []byte) {
+	mapping := make(map[string]string)
+	err := json.Unmarshal(data, &mapping)
+	if err != nil {
+		return
+	}
+	proxies := tunnel.Proxies()
+	for name, proxy := range proxies {
+		selected, exist := mapping[name]
+		if !exist {
+			continue
+		}
+		outbound, ok := proxy.(*adapter.Proxy)
+		if !ok {
+			continue
+		}
+		selector, ok := outbound.ProxyAdapter.(*outboundgroup.Selector)
+		if !ok {
+			continue
+		}
+		selector.Set(selected)
+	}
+}
+
 func SetLogLevel(level string) {
 	log.SetLevel(log.LogLevelMapping[level])
 }
@@ -75,11 +101,11 @@ func fetchLogs() {
 	ch := make(chan log.Event, 1024)
 	sub := log.Subscribe()
 	defer log.UnSubscribe(sub)
+
 	go func() {
-		for elm := range sub {
-			l := elm.(log.Event)
+		for logM := range sub {
 			select {
-			case ch <- l:
+			case ch <- logM.(log.Event):
 			default:
 			}
 		}
@@ -138,7 +164,7 @@ func HealthCheck(name string, url string, timeout int) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 			defer cancel()
 			p.URLTest(ctx, url)
-			return nil, nil
+			return 0, nil
 		})
 	}
 	b.Wait()
