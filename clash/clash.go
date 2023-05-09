@@ -3,6 +3,8 @@ package clash
 import (
 	"context"
 	"encoding/json"
+	"github.com/Dreamacro/clash/adapter"
+	"github.com/Dreamacro/clash/adapter/outboundgroup"
 	"path/filepath"
 	"time"
 
@@ -39,6 +41,14 @@ func Setup(homeDir, config string, c Client) {
 	executor.ApplyConfig(base, true)
 }
 
+func GetConfigGeneral() []byte {
+	if base == nil {
+		return nil
+	}
+	data, _ := json.Marshal(base.General)
+	return data
+}
+
 func SetConfig(uuid string) error {
 	path := filepath.Join(constant.Path.HomeDir(), uuid, "config.yaml")
 	cfg, err := executor.ParseWithPath(path)
@@ -53,6 +63,37 @@ func SetConfig(uuid string) error {
 	cfg.General = base.General
 	executor.ApplyConfig(cfg, false)
 	return nil
+}
+
+func PatchSelector(data []byte) bool {
+	if base == nil {
+		return false
+	}
+	mapping := make(map[string]string)
+	err := json.Unmarshal(data, &mapping)
+	if err != nil {
+		return false
+	}
+	proxies := tunnel.Proxies()
+	for name, proxy := range proxies {
+		selected, exist := mapping[name]
+		if !exist {
+			continue
+		}
+		outbound, ok := proxy.(*adapter.Proxy)
+		if !ok {
+			continue
+		}
+		selector, ok := outbound.ProxyAdapter.(*outboundgroup.Selector)
+		if !ok {
+			continue
+		}
+		err := selector.Set(selected)
+		if err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func SetLogLevel(level string) {
@@ -75,11 +116,11 @@ func fetchLogs() {
 	ch := make(chan log.Event, 1024)
 	sub := log.Subscribe()
 	defer log.UnSubscribe(sub)
+
 	go func() {
-		for elm := range sub {
-			l := elm.(log.Event)
+		for logM := range sub {
 			select {
-			case ch <- l:
+			case ch <- logM.(log.Event):
 			default:
 			}
 		}
@@ -138,7 +179,7 @@ func HealthCheck(name string, url string, timeout int) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 			defer cancel()
 			p.URLTest(ctx, url)
-			return nil, nil
+			return 0, nil
 		})
 	}
 	b.Wait()
