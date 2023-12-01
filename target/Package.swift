@@ -11,7 +11,7 @@ let package = Package(
     .binaryTarget(
       name: "ClashKit",
       path: "./ClashKit.xcframework"
-      //checksum: "f225654a8cc34bfd5a8106eaada82f88d57d6aba9d66f689cb63f1d5ef94ddbc"
+      //checksum: "2d7c3803d4cdbee5dbbc8a767450076e7fcf91f0b568435755a468294649e2e4"
     )
   ]
 )

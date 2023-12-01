@@ -106,10 +106,10 @@ func SetTunnelMode(mode string) {
 }
 
 func CloseAllConnections() {
-	snapshot := statistic.DefaultManager.Snapshot()
-	for _, c := range snapshot.Connections {
-		c.Close()
-	}
+	statistic.DefaultManager.Range(func(c statistic.Tracker) bool {
+		_ = c.Close()
+		return true
+	})
 }
 
 func fetchLogs() {
@@ -120,7 +120,7 @@ func fetchLogs() {
 	go func() {
 		for logM := range sub {
 			select {
-			case ch <- logM.(log.Event):
+			case ch <- logM:
 			default:
 			}
 		}
@@ -172,14 +172,14 @@ func HealthCheck(name string, url string, timeout int) {
 	if len(proxies) == 0 {
 		return
 	}
-	b, _ := batch.New(context.Background(), batch.WithConcurrencyNum(10))
+	b, _ := batch.New[bool](context.Background(), batch.WithConcurrencyNum[bool](10))
 	for _, proxy := range proxies {
 		p := proxy
-		b.Go(p.Name(), func() (any, error) {
+		b.Go(p.Name(), func() (bool, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 			defer cancel()
-			p.URLTest(ctx, url)
-			return 0, nil
+			p.URLTest(ctx, url, nil, constant.OriginalHistory)
+			return true, nil
 		})
 	}
 	b.Wait()
